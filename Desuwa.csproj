@@ -7,6 +7,20 @@
         <UseWindowsForms>true</UseWindowsForms>
         <ImplicitUsings>enable</ImplicitUsings>
         <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+
+        <!-- 版本号配置 -->
+        <Version>1.0.7</Version>
+        <AssemblyVersion>1.0.7.0</AssemblyVersion>
+        <FileVersion>1.0.7.0</FileVersion>
+
+        <!-- 应用程序图标 -->
+        <ApplicationIcon>Assets\app.ico</ApplicationIcon>
     </PropertyGroup>
+
+    <ItemGroup>
+        <!-- 嵌入托盘图标资源 -->
+        <EmbeddedResource Include="Assets\enabled.ico" />
+        <EmbeddedResource Include="Assets\disabled.ico" />
+    </ItemGroup>
 
 </Project>

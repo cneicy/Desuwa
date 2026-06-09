@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
+using System.Reflection;
 using System.Runtime.InteropServices;
 
 namespace Desuwa;
@@ -20,7 +21,45 @@ public class Program : Form
     private static string _customSuffix = "desuwa";
     private static readonly object LockObj = new();
 
+    private static Icon? _enabledIcon;
+    private static Icon? _disabledIcon;
+
     private LowLevelKeyboardProcDelegate _hookDelegate;
+
+    /// <summary>
+    /// 从嵌入资源加载图标
+    /// </summary>
+    private static Icon? LoadIconFromResource(string resourceName)
+    {
+        try
+        {
+            var assembly = Assembly.GetExecutingAssembly();
+            var fullResourceName = $"Desuwa.Assets.{resourceName}";
+
+            using var stream = assembly.GetManifestResourceStream(fullResourceName);
+            if (stream == null)
+            {
+                Console.WriteLine($"⚠️ 找不到嵌入资源: {fullResourceName}");
+                return null;
+            }
+
+            return new Icon(stream);
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"❌ 加载图标失败 ({resourceName}): {ex.Message}");
+            return null;
+        }
+    }
+
+    /// <summary>
+    /// 初始化图标资源
+    /// </summary>
+    private static void InitializeIcons()
+    {
+        _enabledIcon = LoadIconFromResource("enabled.ico");
+        _disabledIcon = LoadIconFromResource("disabled.ico");
+    }
 
     [DllImport("user32.dll", CharSet = CharSet.Auto, SetLastError = true)]
     private static extern IntPtr SetWindowsHookEx(int idHook, LowLevelKeyboardProcDelegate lpfn, IntPtr hMod, uint dwThreadId);
@@ -53,7 +92,7 @@ public class Program : Form
         _trayIcon = new NotifyIcon
         {
             Text = $"全自动口癖工具 (当前口癖: {_customSuffix.Trim()})",
-            Icon = new Icon(SystemIcons.Application, 40, 40),
+            Icon = _enabledIcon ?? new Icon(SystemIcons.Application, 40, 40),
             ContextMenuStrip = _trayMenu,
             Visible = true
         };
@@ -74,22 +113,28 @@ public class Program : Form
     {
         _active = !_active;
         _trayIcon.Text = $"全自动口癖工具 - {(_active ? "已启用" : "已禁用")} (口癖: {_customSuffix.Trim()})";
-        
+
         if (_active)
         {
-            _trayIcon.Icon = new Icon(SystemIcons.Application, 40, 40);
+            _trayIcon.Icon = _enabledIcon ?? new Icon(SystemIcons.Application, 40, 40);
         }
         else
         {
-            using (var bmp = new Bitmap(16, 16))
-            using (var g = Graphics.FromImage(bmp))
-            {
-                g.Clear(Color.Transparent);
-                g.DrawRectangle(Pens.Red, 0, 0, 15, 15);
-                g.DrawLine(Pens.Red, 0, 0, 15, 15);
-                _trayIcon.Icon = Icon.FromHandle(bmp.GetHicon());
-            }
+            _trayIcon.Icon = _disabledIcon ?? CreateFallbackDisabledIcon();
         }
+    }
+
+    /// <summary>
+    /// 创建备用禁用图标（当资源加载失败时使用）
+    /// </summary>
+    private static Icon CreateFallbackDisabledIcon()
+    {
+        using var bmp = new Bitmap(16, 16);
+        using var g = Graphics.FromImage(bmp);
+        g.Clear(Color.Transparent);
+        g.DrawRectangle(Pens.Red, 0, 0, 15, 15);
+        g.DrawLine(Pens.Red, 0, 0, 15, 15);
+        return Icon.FromHandle(bmp.GetHicon());
     }
 
     private void EditSuffix(object sender, EventArgs e)
@@ -190,6 +235,9 @@ public class Program : Form
     [STAThread]
     private static void Main()
     {
+        // 初始化图标资源
+        InitializeIcons();
+
         Application.EnableVisualStyles();
         Application.SetCompatibleTextRenderingDefault(false);
         Application.Run(new Program());

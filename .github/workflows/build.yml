@@ -1,0 +1,220 @@
+name: Build & Release
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+    branches: [main, master]
+
+permissions:
+  contents: write
+
+jobs:
+  # ── 检查 commit message ──────────────────────────────
+  check:
+    name: Check commit message
+    runs-on: ubuntu-latest
+    outputs:
+      should_build: ${{ steps.flags.outputs.should_build }}
+      should_release: ${{ steps.flags.outputs.should_release }}
+      version: ${{ steps.flags.outputs.version }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Parse commit message
+        id: flags
+        env:
+          COMMIT_MSG: ${{ github.event.head_commit.message }}
+        run: |
+          MSG="$COMMIT_MSG"
+
+          # 从 Desuwa.csproj 提取版本号
+          VERSION="v$(grep '<Version>' Desuwa.csproj | sed 's/.*<Version>\(.*\)<\/Version>.*/\1/')"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "📦 Version: $VERSION"
+
+          # PR 始终构建
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            echo "should_build=true"    >> "$GITHUB_OUTPUT"
+            echo "should_release=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          # 初始化标志
+          BUILD=false
+          RELEASE=false
+
+          # "build release" = 构建 + GitHub Release
+          if echo "$MSG" | grep -qi "build release"; then
+            BUILD=true
+            RELEASE=true
+          # "build action" = 仅构建
+          elif echo "$MSG" | grep -qi "build action"; then
+            BUILD=true
+          fi
+
+          echo "should_build=$BUILD"     >> "$GITHUB_OUTPUT"
+          echo "should_release=$RELEASE" >> "$GITHUB_OUTPUT"
+
+          echo "📋 Flags: build=$BUILD release=$RELEASE"
+
+  # ── 构建 Windows x64 ───────────────────────────────────
+  build:
+    name: Build Windows x64
+    needs: check
+    if: needs.check.outputs.should_build == 'true'
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Restore dependencies
+        run: dotnet restore
+
+      - name: Build self-contained version
+        run: |
+          dotnet publish Desuwa.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -o publish-selfcontained
+
+      - name: Build runtime-dependent version
+        run: |
+          dotnet publish Desuwa.csproj -c Release --self-contained false -o publish-runtime-dependent
+
+      - name: Prepare artifacts
+        shell: pwsh
+        run: |
+          $VERSION = "${{ needs.check.outputs.version }}"
+
+          # Self-contained exe
+          $SELFCONTAINED_NAME = "Desuwa-windows-x64-self-contained-${VERSION}.exe"
+          Write-Host "📦 Self-contained: $SELFCONTAINED_NAME"
+          Copy-Item "publish-selfcontained\Desuwa.exe" $SELFCONTAINED_NAME
+
+          # Runtime-dependent zip
+          $RUNTIME_DEP_NAME = "Desuwa-windows-x64-runtime-dependent-${VERSION}.zip"
+          Write-Host "📦 Runtime-dependent version: $RUNTIME_DEP_NAME"
+          Compress-Archive -Path "publish-runtime-dependent\*" -DestinationPath $RUNTIME_DEP_NAME
+
+          # Save names for later steps
+          echo "selfcontained_name=$SELFCONTAINED_NAME" >> $env:GITHUB_ENV
+          echo "runtime_dep_name=$RUNTIME_DEP_NAME" >> $env:GITHUB_ENV
+
+      - name: Upload self-contained artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.selfcontained_name }}
+          path: ${{ env.selfcontained_name }}
+
+      - name: Upload runtime-dependent artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.runtime_dep_name }}
+          path: ${{ env.runtime_dep_name }}
+
+  # ── 发布到 GitHub Releases ─────────────────────────────
+  release:
+    name: Publish Release
+    needs: [check, build]
+    if: needs.check.outputs.should_release == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          merge-multiple: true
+
+      - name: List downloaded files
+        run: |
+          echo "Downloaded artifacts:"
+          ls -lh
+
+      - name: Delete existing release & tag (force fresh release)
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          VERSION="${{ needs.check.outputs.version }}"
+          echo "🗑️ Cleaning up existing release/tag: $VERSION"
+          gh release delete "$VERSION" --yes --cleanup-tag 2>/dev/null || echo "No existing release to delete"
+          sleep 3
+
+      - name: Generate release notes
+        run: |
+          VERSION="${{ needs.check.outputs.version }}"
+          REPO="${{ github.repository }}"
+          BASE_URL="https://github.com/${REPO}/releases/download/${VERSION}"
+
+          # 查找上一个 release tag
+          PREV_TAG=$(git tag --sort=-v:refname | grep -v "^${VERSION}$" | head -1)
+
+          {
+            echo "## 📦 Desuwa ${VERSION}"
+            echo ""
+            echo "### ⬇️ Download"
+            echo ""
+            echo "#### Self-contained 版本（推荐）"
+            echo "- [Desuwa-windows-x64-self-contained-${VERSION}.exe](${BASE_URL}/Desuwa-windows-x64-self-contained-${VERSION}.exe)"
+            echo ""
+            echo "> ✅ 单文件 exe，无需安装 .NET 运行时，双击即可运行"
+            echo "> 📦 体积约 140MB"
+            echo ""
+            echo "#### Runtime-dependent 版本"
+            echo "- [Desuwa-windows-x64-runtime-dependent-${VERSION}.zip](${BASE_URL}/Desuwa-windows-x64-runtime-dependent-${VERSION}.zip)"
+            echo ""
+            echo "> ⚠️ 需要预先安装 .NET 8.0 运行时"
+            echo "> 📦 体积约 60KB"
+            echo ""
+            echo "---"
+            echo ""
+            echo "### What's Changed"
+            echo ""
+
+            if [ -n "$PREV_TAG" ]; then
+              echo "Changes since **${PREV_TAG}**:"
+              echo ""
+              git log "${PREV_TAG}..HEAD" --pretty=format:"- %s (\`%h\`)" --reverse
+            else
+              echo "Initial release"
+            fi
+
+            echo ""
+            echo ""
+            echo "---"
+            echo ""
+            echo "### 📊 Build Info"
+            echo "- **Build date**: $(date -u '+%Y-%m-%d %H:%M UTC')"
+            echo "- **Commit**: [\`${GITHUB_SHA::7}\`](https://github.com/${REPO}/commit/${GITHUB_SHA})"
+            echo ""
+
+            if [ -n "$PREV_TAG" ]; then
+              echo "**Full Changelog**: https://github.com/${REPO}/compare/${PREV_TAG}...${VERSION}"
+            else
+              echo "**Full Changelog**: https://github.com/${REPO}/commits/${VERSION}"
+            fi
+          } > release_notes.md
+
+          echo "📝 Generated release notes:"
+          cat release_notes.md
+
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          VERSION="${{ needs.check.outputs.version }}"
+          gh release create "$VERSION" \
+            --title "Desuwa ${VERSION}" \
+            --notes-file release_notes.md \
+            --latest \
+            Desuwa-windows-x64-self-contained-${VERSION}.exe \
+            Desuwa-windows-x64-runtime-dependent-${VERSION}.zip
