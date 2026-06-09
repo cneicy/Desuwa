@@ -6,10 +6,9 @@
 
 **全自动口癖添加工具 - 按下回车自动发送口癖**
 
-[![Upstream](https://img.shields.io/badge/Upstream-cneicy/Desuwa-blue?style=flat-square&logo=github)](https://github.com/cneicy/Desuwa)
 [![.NET](https://img.shields.io/badge/.NET-8.0-512BD4?style=flat-square&logo=dotnet&logoColor=white)](https://dotnet.microsoft.com/)
 [![Windows](https://img.shields.io/badge/Windows-x64-0078D4?style=flat-square&logo=windows&logoColor=white)](https://github.com/VincentZyu233/Desuwa/releases)
-[![Release](https://img.shields.io/github/v/release/VincentZyu233/Desuwa?style=flat-square)](https://github.com/VincentZyu233/Desuwa/releases)
+[![Release](https://img.shields.io/github/v/release/cneicy/Desuwa?style=flat-square)](https://github.com/cneicy/Desuwa/releases)
 
 </div>
 
@@ -57,7 +56,7 @@ Desuwa 是一个轻量级的 Windows 系统托盘工具，可以在你按下回�
 
 ```bash
 # 克隆仓库
-git clone https://github.com/VincentZyuApps/Desuwa.git
+git clone https://github.com/cneicy/Desuwa.git
 cd Desuwa
 
 # 构建 Self-contained 版本
@@ -126,7 +125,7 @@ Desuwa/
 
 ```bash
 # 克隆仓库
-git clone https://github.com/VincentZyuApps/Desuwa.git
+git clone https://github.com/cneicy/Desuwa.git
 cd Desuwa
 
 # 还原依赖
