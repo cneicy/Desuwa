@@ -121,13 +121,14 @@ Desuwa/
 ├── .github/workflows/        # GitHub Actions CI/CD
 │   ├── build.yml            # 构建工作流
 │   └── build.md             # 构建文档
-├── Program.cs               # 程序入口
-├── TrayApplicationContext.cs # 托盘与状态协调
-├── KeyboardHookService.cs   # 全局键盘钩子
-├── GlobalHotkeyService.cs   # 全局快捷键
-├── SettingsForm.cs          # 设置窗口
-├── SettingsStore.cs         # 配置读写
-├── AppSettings.cs           # 配置模型
+├── src/                     # 应用源码
+│   ├── Program.cs           # 程序入口
+│   ├── TrayApplicationContext.cs # 托盘与状态协调
+│   ├── KeyboardHookService.cs # 全局键盘钩子
+│   ├── GlobalHotkeyService.cs # 全局快捷键
+│   ├── SettingsForm.cs      # 设置窗口
+│   ├── SettingsStore.cs     # 配置读写
+│   └── AppSettings.cs       # 配置模型
 ├── Desuwa.csproj           # 项目配置
 └── README.md               # 本文件
 ```
